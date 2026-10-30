@@ -1,0 +1,5 @@
+out/
+cache/
+lib/forge-std/
+broadcast/
+.env
