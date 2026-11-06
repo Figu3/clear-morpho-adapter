@@ -59,6 +59,7 @@ Tests fork mainnet at block 26,299,058 (override with `FORK_BLOCK`) and are skip
 | `src/interfaces/IClear.sol` | Subset of the Clear V1 ABI |
 | `test/ClearForkBase.sol` | Fork fixture and the spec formulas, written independently of the contracts |
 | `test/BaseLpUsdFeed.fork.t.sol` | Feed against the live reserve and oracle, Chainlink mocked |
+| `test/BaseLpUsdFeedLive.fork.t.sol` | Feed on the latest block, nothing mocked, plus Morpho's oracle (manual, `FEED_LIVE=true`) |
 | `test/ClearMetaReserveAdapter.fork.t.sol` | Adapter, SPEC §7 (USDS and PYUSD) |
 | `test/ClearZap.fork.t.sol` | Zap, SPEC §7 (including gate-closed exits) |
 | `test/ClearZapAggregator.fork.t.sol` | Zap aggregator route against a mock router: fair, bad rate, over-pull, wrong recipient, re-entry |
