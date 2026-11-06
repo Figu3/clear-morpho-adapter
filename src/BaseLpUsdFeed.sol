@@ -27,7 +27,7 @@ interface IHasClearFactory {
 ///             answer = NAV per share x net-balance-weighted mark
 ///             cap_i  = min(redemption price, $1)
 ///             mark_i = min(ClearOracle price, cap_i)   if ClearOracle is fresh
-///                      min(Chainlink price, cap_i)     if Chainlink is over 30 bps below that, or
+///                      min(Chainlink price, cap_i)     if Chainlink is over 25 bps below that, or
 ///                                                      ClearOracle is stale
 ///
 ///         ClearOracle is the primary source, so the feed agrees with the prices Clear trades on. Chainlink
@@ -48,9 +48,9 @@ contract BaseLpUsdFeed is IChainlinkFeed {
 
     uint256 internal constant PAR = 1e8;
     uint256 internal constant BPS = 10_000;
-    /// @dev Just outside the 25 bps deviation threshold of Chainlink's stablecoin feeds, so ordinary Chainlink
-    ///      lag can never move the mark.
-    uint256 public constant CHAINLINK_GUARD_BPS = 30;
+    /// @dev Equal to the 25 bps deviation threshold of Chainlink's stablecoin feeds, so ordinary Chainlink lag
+    ///      should not move the mark. There is no margin: a lag slightly past the threshold can.
+    uint256 public constant CHAINLINK_GUARD_BPS = 25;
 
     IClearBaseReserve public immutable baseReserve;
     IClearOracle public immutable oracle;

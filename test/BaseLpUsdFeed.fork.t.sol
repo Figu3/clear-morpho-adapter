@@ -112,13 +112,13 @@ contract BaseLpUsdFeedForkTest is ClearForkBase {
 
     function test_guardBoundary_isMeasuredFromTheCappedMark() public {
         _pushUsdt(USDT_AT_PAR_8);
-        uint256 threshold = USDT_REDEMPTION_8 * 9970 / 10_000;
+        uint256 threshold = USDT_REDEMPTION_8 * 9975 / 10_000;
 
         _mockChainlink(CHAINLINK_USDT, int256(threshold), block.timestamp);
-        assertEq(_answer(), _expected(PAR_8, USDT_REDEMPTION_8), "exactly 30 bps is within the guard");
+        assertEq(_answer(), _expected(PAR_8, USDT_REDEMPTION_8), "exactly 25 bps is within the guard");
 
         _mockChainlink(CHAINLINK_USDT, int256(threshold - 1), block.timestamp);
-        assertEq(_answer(), _expected(PAR_8, threshold - 1), "past 30 bps Chainlink takes over");
+        assertEq(_answer(), _expected(PAR_8, threshold - 1), "past 25 bps Chainlink takes over");
     }
 
     function testFuzz_markNeverMoreThanGuardAboveChainlink(uint256 usdt8, int256 chainlinkUsdt) public {
@@ -126,7 +126,7 @@ contract BaseLpUsdFeedForkTest is ClearForkBase {
         chainlinkUsdt = bound(chainlinkUsdt, 0.9e8, 1.05e8);
         _pushUsdt(usdt8);
         _mockChainlink(CHAINLINK_USDT, chainlinkUsdt, block.timestamp);
-        uint256 ceiling = uint256(chainlinkUsdt) * 10_000 / 9970 + 1;
+        uint256 ceiling = uint256(chainlinkUsdt) * 10_000 / 9975 + 1;
         if (ceiling < USDT_REDEMPTION_8) {
             assertLe(_answer(), _expected(PAR_8, ceiling) + 1);
         }
