@@ -24,10 +24,12 @@ interface IHasClearFactory {
 /// @notice BaseLP/USD price for external consumers (lending markets), behind a Chainlink-style interface so
 ///         it plugs into Morpho's `MorphoChainlinkOracleV2` as a base feed.
 ///
-///             answer = NAV per share x net-balance-weighted mark
+///             answer = NAV per share x net-balance-weighted mark, or x the lower mark if the two marks
+///                      are over 25 bps apart
 ///             cap_i  = min(redemption price, $1)
 ///             mark_i = min(ClearOracle price, cap_i)   if ClearOracle is fresh
-///                      min(Chainlink price, cap_i)     if Chainlink is over 25 bps below that, or
+///                      min(Chainlink price, cap_i)     if Chainlink is under 25 hours old and over
+///                                                      25 bps below that, or
 ///                                                      ClearOracle is stale
 ///
 ///         ClearOracle is the primary source, so the feed agrees with the prices Clear trades on. Chainlink
@@ -39,8 +41,8 @@ interface IHasClearFactory {
 ///           flash loan. The reserve's balances are lent out then and NAV moves by the borrowed amount. The
 ///           lock is transient, so this only blocks the transaction holding it.
 ///         - {NoPrice}: an asset has neither a fresh ClearOracle price nor a usable Chainlink answer.
-///         A stale Chainlink answer is still used, like Morpho's own oracles do; {latestRoundData} reports
-///         its age through `updatedAt` so consumers can apply their own bound.
+///         With a stale Clear price, a Chainlink answer of any age is still used, like Morpho's own oracles
+///         do; {latestRoundData} reports its age through `updatedAt` so consumers can apply their own bound.
 contract BaseLpUsdFeed is IChainlinkFeed {
     uint8 public constant decimals = 8;
     uint256 public constant version = 1;
@@ -51,6 +53,9 @@ contract BaseLpUsdFeed is IChainlinkFeed {
     /// @dev Equal to the 25 bps deviation threshold of Chainlink's stablecoin feeds, so ordinary Chainlink lag
     ///      should not move the mark. There is no margin: a lag slightly past the threshold can.
     uint256 public constant CHAINLINK_GUARD_BPS = 25;
+    /// @dev Chainlink's 24 hour stablecoin heartbeat plus a margin. Older answers cannot override a fresh Clear
+    ///      price. They are still used when Clear is stale: reverting there would freeze liquidations.
+    uint256 public constant CHAINLINK_MAX_AGE = 25 hours;
 
     IClearBaseReserve public immutable baseReserve;
     IClearOracle public immutable oracle;
@@ -106,8 +111,11 @@ contract BaseLpUsdFeed is IChainlinkFeed {
     }
 
     function _weightedMark(uint256 mark0, uint256 mark1, uint256 net0, uint256 net1) internal pure returns (uint256) {
+        (uint256 low, uint256 high) = mark0 < mark1 ? (mark0, mark1) : (mark1, mark0);
         // Fully encumbered reserve: no composition to weight, take the worse mark.
-        if (net0 + net1 == 0) return mark0 < mark1 ? mark0 : mark1;
+        if (net0 + net1 == 0) return low;
+        // Real depeg: spot weights can be moved by a swap earlier in the transaction, so ignore them.
+        if (low * BPS < high * (BPS - CHAINLINK_GUARD_BPS)) return low;
         return (net0 * mark0 + net1 * mark1) / (net0 + net1);
     }
 
@@ -126,7 +134,9 @@ contract BaseLpUsdFeed is IChainlinkFeed {
             mark = clearPrice < cap ? clearPrice : cap;
             at = clearAt;
             // Measured from the capped mark, the value actually reported.
-            if (!chainlinkOk || chainlinkPrice * BPS >= mark * (BPS - CHAINLINK_GUARD_BPS)) return (mark, at);
+            bool guardApplies = chainlinkOk && chainlinkAt + CHAINLINK_MAX_AGE >= block.timestamp
+                && chainlinkPrice * BPS < mark * (BPS - CHAINLINK_GUARD_BPS);
+            if (!guardApplies) return (mark, at);
         }
         mark = chainlinkPrice < cap ? chainlinkPrice : cap;
         at = chainlinkAt;

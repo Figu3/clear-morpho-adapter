@@ -78,7 +78,10 @@ contract BaseLpUsdFeedForkTest is ClearForkBase {
     function _expected(uint256 usdcMark8, uint256 usdtMark8) internal view returns (uint256) {
         uint256 nc = base.netBalanceOf(USDC);
         uint256 nt = base.netBalanceOf(USDT);
-        return base.convertToValue(1e18) * ((nc * usdcMark8 + nt * usdtMark8) / (nc + nt)) / 1e18;
+        (uint256 low, uint256 high) = usdcMark8 < usdtMark8 ? (usdcMark8, usdtMark8) : (usdtMark8, usdcMark8);
+        // Marks further apart than the guard: the whole reserve at the lower one, so weights cannot be gamed.
+        uint256 mark = low * 10_000 < high * 9975 ? low : (nc * usdcMark8 + nt * usdtMark8) / (nc + nt);
+        return base.convertToValue(1e18) * mark / 1e18;
     }
 
     function _pushUsdt(uint256 usdt8) internal {
@@ -152,6 +155,48 @@ contract BaseLpUsdFeedForkTest is ClearForkBase {
         deal(USDC, address(this), 1_000_000e6);
         IERC20Loose(USDC).transfer(BASE_RESERVE, 1_000_000e6);
         assertEq(_answer(), before);
+    }
+
+    // ---- Spot weights ----
+
+    function _mockNet(address asset, uint256 amount) internal {
+        vm.mockCall(BASE_RESERVE, abi.encodeCall(base.netBalanceOf, (asset)), abi.encode(amount));
+    }
+
+    function test_wideGap_compositionShiftDoesNotMovePrice() public {
+        _pushUsdt(0.99e8);
+        uint256 before = _answer();
+        assertEq(before, base.convertToValue(1e18) * 0.99e8 / 1e18);
+        _mockNet(USDC, 1_000_000e6);
+        _mockNet(USDT, 1e6);
+        assertEq(_answer(), before);
+    }
+
+    function test_narrowGap_staysWeighted() public {
+        _pushUsdt(0.998e8);
+        _mockNet(USDC, 1_000_000e6);
+        _mockNet(USDT, 1_000_000e6);
+        assertEq(_answer(), base.convertToValue(1e18) * 0.999e8 / 1e18);
+    }
+
+    // ---- Chainlink age ----
+
+    function test_staleChainlink_cannotOverrideFreshClear() public {
+        _pushUsdt(USDT_AT_PAR_8);
+        _mockChainlink(CHAINLINK_USDT, 0.99e8, block.timestamp - 25 hours - 1);
+        assertEq(_answer(), _expected(PAR_8, USDT_REDEMPTION_8));
+    }
+
+    function test_chainlinkAtMaxAge_stillGuards() public {
+        _pushUsdt(USDT_AT_PAR_8);
+        _mockChainlink(CHAINLINK_USDT, 0.99e8, block.timestamp - 25 hours);
+        assertEq(_answer(), _expected(PAR_8, 0.99e8));
+    }
+
+    function test_staleChainlink_stillUsedWhenClearStale() public {
+        _makeOracleStale();
+        _mockChainlink(CHAINLINK_USDT, 0.995e8, block.timestamp - 3 days);
+        assertEq(_answer(), _expected(PAR_8, 0.995e8));
     }
 
     // ---- Degraded sources: the feed keeps answering ----
