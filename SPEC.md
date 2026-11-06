@@ -173,6 +173,6 @@ answer = NAV par part x mark pondéré par les soldes nets
 | Écart entre les deux marks | médiane 12,0 bps, max 14,7 bps |
 | Déclenchements du garde et de la règle du mark le plus bas | 0 |
 | Heartbeat Chainlink, 30 derniers rounds | max 24,01 h |
-| Arrêt du keeper | 12,7 h à partir du 4 novembre 19:33 UTC, ClearOracle périmé 23 % de la fenêtre |
+| Arrêt volontaire du keeper (nuit, maîtrise des coûts) | 12,7 h à partir du 4 novembre 19:33 UTC, ClearOracle périmé 23 % de la fenêtre |
 
 Ces mesures montrent l'absence de faux déclenchement en marché calme. Elles ne valident pas 25 bps en situation de depeg : la fenêtre est trop courte et n'en contient aucun.
