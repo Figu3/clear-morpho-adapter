@@ -55,8 +55,10 @@ Tests fork mainnet at block 26,299,058 (override with `FORK_BLOCK`) and are skip
 |---|---|
 | `src/ClearMetaReserveAdapter.sol` | Morpho adapter (BaseLP <-> MetaLP) |
 | `src/ClearZap.sol` | USDC/USDT <-> vault shares |
+| `src/BaseLpUsdFeed.sol` | BaseLP/USD feed for lending markets: ClearOracle primary, Chainlink as backup and 30 bps guard |
 | `src/interfaces/IClear.sol` | Subset of the Clear V1 ABI |
 | `test/ClearForkBase.sol` | Fork fixture and the spec formulas, written independently of the contracts |
+| `test/BaseLpUsdFeed.fork.t.sol` | Feed against the live reserve and oracle, Chainlink mocked |
 | `test/ClearMetaReserveAdapter.fork.t.sol` | Adapter, SPEC §7 (USDS and PYUSD) |
 | `test/ClearZap.fork.t.sol` | Zap, SPEC §7 (including gate-closed exits) |
 | `test/ClearZapAggregator.fork.t.sol` | Zap aggregator route against a mock router: fair, bad rate, over-pull, wrong recipient, re-entry |
