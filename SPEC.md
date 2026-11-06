@@ -144,3 +144,35 @@ Résultat au 30/10 : 84 tests fork (dont 29 sur PYUSD) et 5 tests d'invariants (
 4. **Marge de désallocation de 5 bps** : si le frais de spread la dépasse, `deallocate` revert et il faut réessayer avec un montant plus petit.
 5. **Qualification réglementaire** du vault et du rôle de curateur, à établir avant le lancement.
 6. **Deux passes de revue IA, audit externe à faire.** Première passe `/solidity-auditor deep` (29/10) : findings 1 et 2 (flash loans, confirmés sur fork), 3 (âge du mark) et 4 (plancher de pénalité `forceDeallocate`) corrigés. Deuxième passe sur le code corrigé : la correction du finding 1 était contournable (verrou Clear ouvert à tous, [90]), corrigée par un revert ; l'âge du mark partait du `poke` et non de la publication ([60]), corrigé ; garde anti-underflow ajoutée sur l'âge. Écarté après vérification : forcer le `catch` de l'oracle par limitation de gas (le 1/64 restant ne suffit pas à finir l'appel au vault). L'oracle reste `immutable` : un changement d'oracle Clear impose un nouvel adapter. Corrigés avec l'ajout de Kyber : montant reçu mesuré (USDT avec frais de transfert), pool Uniswap validé au constructeur. Restent ouverts, sous le seuil de confiance : une `data` à double sens, la marge de 5 bps, le mélange des jambes via un swap MetaReserve en dépeg, l'arrondi du dépôt équilibré du zap, l'absence de deadline sur le zap, la poussière reversée au prochain appelant. Troisième passe `/solidity-auditor deep` sur le zap avec la route Kyber (30/10) : une route vendant exactement le `maxSell` documenté faisait revert le dépôt dans environ 73 % des cas, à 1-3 wei près ([75], reproduit par un fuzz puis corrigé) ; une sortie pouvait laisser la jambe invendue ([50], corrigé) ; routeur sans code (corrigé) ; commentaire de borne précisé. Vérifié sans finding : une route ne peut dépenser ni les allowances d'autres utilisateurs, ni les approbations max du zap à la BaseReserve et au vault (elles prélèvent toutes sur `msg.sender`). Restent ouverts : une route construite sur un aperçu peut être invalidée par une petite opération sur la reserve juste avant (revert, pas de perte) ; l'aperçu de dépôt n'est pas recalculé si la route passe elle-même par Clear (revert ou poussière pour l'appelant). Un audit externe ciblé (adapter + zap, environ 480 lignes) reste nécessaire avant tout déploiement.
+
+## 9. Feed BaseLP/USD (`BaseLpUsdFeed`)
+
+Feed sans état, interface Chainlink à 8 décimales, destiné aux marchés de prêt (base feed de `MorphoChainlinkOracleV2`). Il n'est utilisé ni par le vault ni par l'adapter.
+
+```
+cap_i  = min(prix de rédemption, 1 $)
+mark_i = min(prix ClearOracle, cap_i)   si ClearOracle est frais
+         min(prix Chainlink, cap_i)     si Chainlink a moins de 25 h et est plus de 25 bps sous ce mark,
+                                        ou si ClearOracle est périmé (Chainlink de tout âge)
+answer = NAV par part x mark pondéré par les soldes nets
+         NAV par part x mark le plus bas, si les deux marks sont à plus de 25 bps l'un de l'autre
+```
+
+- **Pyth d'abord :** tant que ClearOracle est frais et que le garde ne se déclenche pas, le feed reprend le prix sur lequel Clear traite.
+- **Revert dans deux cas seulement :** verrou global Clear tenu (`ClearCallInProgress`, y compris pendant un flash loan), ou aucun prix pour un actif (`NoPrice`).
+- **Chainlink ancien avec Clear périmé :** conservé, car un revert gèlerait les liquidations. Risque accepté : surévaluation si les deux sources tombent pendant un depeg.
+- **Saut de prix :** au-delà de 25 bps entre les marks, le prix passe d'un coup au mark le plus bas (environ 13 bps pour une réserve 50/50). À prendre en compte dans le LLTV.
+
+**Mesures du 6 novembre 2026 (bloc 26 356 022) :**
+
+| Mesure | Valeur |
+|---|---|
+| Historique ClearOracle disponible | 2,1 jours, premier push USDC le 4 novembre à 09:12 UTC |
+| Écart mark Clear moins Chainlink, USDC | max 2,9 bps |
+| Écart mark Clear moins Chainlink, USDT | max 5,6 bps |
+| Écart entre les deux marks | médiane 12,0 bps, max 14,7 bps |
+| Déclenchements du garde et de la règle du mark le plus bas | 0 |
+| Heartbeat Chainlink, 30 derniers rounds | max 24,01 h |
+| Arrêt du keeper | 12,7 h à partir du 4 novembre 19:33 UTC, ClearOracle périmé 23 % de la fenêtre |
+
+Ces mesures montrent l'absence de faux déclenchement en marché calme. Elles ne valident pas 25 bps en situation de depeg : la fenêtre est trop courte et n'en contient aucun.
